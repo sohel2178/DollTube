@@ -19,9 +19,11 @@ import android.widget.TextView;
 
 import com.google.android.gms.common.GoogleApiAvailability;
 import com.google.api.client.extensions.android.http.AndroidHttp;
+import com.google.api.client.googleapis.auth.oauth2.GoogleClientSecrets;
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential;
 import com.google.api.client.googleapis.extensions.android.gms.auth.GooglePlayServicesAvailabilityIOException;
 import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException;
+import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.HttpTransport;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.jackson2.JacksonFactory;
@@ -30,7 +32,13 @@ import com.google.api.services.youtube.YouTube;
 import com.google.api.services.youtube.YouTubeScopes;
 import com.google.api.services.youtube.model.Channel;
 import com.google.api.services.youtube.model.ChannelListResponse;
+import com.google.api.services.youtube.model.Comment;
+import com.google.api.services.youtube.model.CommentSnippet;
+import com.google.api.services.youtube.model.CommentThread;
+import com.google.api.services.youtube.model.CommentThreadSnippet;
 import com.google.api.services.youtube.model.Playlist;
+import com.google.api.services.youtube.model.PlaylistItem;
+import com.google.api.services.youtube.model.PlaylistItemListResponse;
 import com.google.api.services.youtube.model.PlaylistListResponse;
 
 import java.io.IOException;
@@ -52,7 +60,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     GoogleAccountCredential mCredential;
     private TextView mOutputText;
-    private Button mCallApiButton,btnPlayList;
+    private Button mCallApiButton,btnPlayList,btnPlayItems;
     ProgressDialog mProgress;
 
     static final int REQUEST_ACCOUNT_PICKER = 1000;
@@ -62,28 +70,38 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private YouTube youTube;
     Observable<String> myObservable;
+    Observable<List<PlaylistItem>> playListObservable;
+    private DollUtil dollUtil;
 
     private static final String PREF_ACCOUNT_NAME = "accountName";
-    private static final String[] SCOPES = { YouTubeScopes.YOUTUBE_READONLY,YouTubeScopes.YOUTUBE_FORCE_SSL,YouTubeScopes.YOUTUBEPARTNER };
+    private static final String[] SCOPES = { YouTubeScopes.YOUTUBE_FORCE_SSL,YouTubeScopes.YOUTUBEPARTNER };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        dollUtil = new DollUtil(this);
+
         mOutputText = (TextView) findViewById(R.id.output);
         mCallApiButton = (Button) findViewById(R.id.call_api);
         btnPlayList = (Button) findViewById(R.id.playlist);
+        btnPlayItems = (Button) findViewById(R.id.playItems);
         mCallApiButton.setOnClickListener(this);
         btnPlayList.setOnClickListener(this);
+        btnPlayItems.setOnClickListener(this);
 
         mProgress = new ProgressDialog(this);
         mProgress.setMessage("Calling YouTube Data API ...");
+
+        //GoogleClientSecrets clientSecret=
 
         // Initialize credentials and service object.
         mCredential = GoogleAccountCredential.usingOAuth2(
                 getApplicationContext(), Arrays.asList(SCOPES))
                 .setBackOff(new ExponentialBackOff());
+
+
 
         getResultsFromApi();
 
@@ -107,11 +125,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
      * appropriate.
      */
     private void getResultsFromApi() {
-        if (! DollUtil.isGooglePlayServicesAvailable(this)) {
-            acquireGooglePlayServices();
+        if (! dollUtil.isGooglePlayServicesAvailable()) {
+            //acquireGooglePlayServices();
+            dollUtil.acquireGooglePlayServices(REQUEST_GOOGLE_PLAY_SERVICES);
         } else if (mCredential.getSelectedAccountName() == null) {
             chooseAccount();
-        } else if (! DollUtil.isDeviceOnline(this)) {
+        } else if (! dollUtil.isDeviceOnline()) {
             mOutputText.setText("No network connection available.");
         } else {
             //new MakeRequestTask(mCredential).execute();
@@ -265,7 +284,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     @Override
                     public void call(Subscriber<? super String> subscriber) {
                         try {
-                            String data = getPlayList();
+                            String data = test();
                             subscriber.onNext(data); // Emit the contents of the URL
                             subscriber.onCompleted(); // Nothing more to emit
                         } catch (Exception e) {
@@ -280,6 +299,31 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                             @Override
                             public void call(String s) {
 
+                            }
+                        });
+                break;
+
+            case R.id.playItems:
+                playListObservable = Observable.create(new Observable.OnSubscribe<List<PlaylistItem>>() {
+                    @Override
+                    public void call(Subscriber<? super List<PlaylistItem>> subscriber) {
+                        try {
+                            List<PlaylistItem> data = getPlayListItem(Constant.PLAYLIST_ID);
+                            subscriber.onNext(data); // Emit the contents of the URL
+                            subscriber.onCompleted(); // Nothing more to emit
+                        } catch (Exception e) {
+                            subscriber.onError(e); // In case there are network errors
+                        }
+
+                    }
+                });
+
+                playListObservable.subscribeOn(Schedulers.newThread())
+                        .observeOn(AndroidSchedulers.mainThread())
+                        .subscribe(new Action1<List<PlaylistItem>>() {
+                            @Override
+                            public void call(List<PlaylistItem> playlistItems) {
+                                Log.d("DOOOO",playlistItems.size()+"");
                             }
                         });
                 break;
@@ -423,5 +467,76 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
 
         return myres;
+    }
+
+    private List<PlaylistItem> getPlayListItem(String playlistId){
+        List<PlaylistItem> playlistItems = new ArrayList<>();
+
+        try {
+            HashMap<String, String> parameters = new HashMap<>();
+            parameters.put("part", "snippet,contentDetails");
+            parameters.put("maxResults", "25");
+            parameters.put("playlistId", playlistId);
+
+            YouTube.PlaylistItems.List playlistItemsListByPlaylistIdRequest = youTube.playlistItems().list(parameters.get("part").toString());
+            if (parameters.containsKey("maxResults")) {
+                playlistItemsListByPlaylistIdRequest.setMaxResults(Long.parseLong(parameters.get("maxResults").toString()));
+            }
+
+            if (parameters.containsKey("playlistId") && parameters.get("playlistId") != "") {
+                playlistItemsListByPlaylistIdRequest.setPlaylistId(parameters.get("playlistId").toString());
+            }
+
+            PlaylistItemListResponse response = playlistItemsListByPlaylistIdRequest.execute();
+            playlistItems.addAll(response.getItems());
+            //System.out.println(response);
+            Log.d("DOOOO",response.toString());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return playlistItems;
+
+    }
+
+
+    private String test(){
+        String retStr = "";
+        try {
+            HashMap<String, String> parameters = new HashMap<>();
+            parameters.put("part", "snippet");
+
+
+            CommentThread commentThread = new CommentThread();
+            CommentThreadSnippet snippet = new CommentThreadSnippet();
+            Comment topLevelComment = new Comment();
+            CommentSnippet commentSnippet = new CommentSnippet();
+
+            topLevelComment.setSnippet(commentSnippet);
+            snippet.setTopLevelComment(topLevelComment);
+            commentThread.setSnippet(snippet);
+
+            YouTube.CommentThreads.Insert commentThreadsInsertRequest = youTube.commentThreads().insert(parameters.get("part").toString(), commentThread);
+            Log.d("TTTT","YOOOO");
+            CommentThread response = commentThreadsInsertRequest.execute();
+            //Log.d("TTTT","YOOOO");
+
+            System.out.println(response);
+
+
+        } catch (GoogleJsonResponseException e) {
+            Log.d("TTTT",e.getMessage());
+            e.printStackTrace();
+            System.err.println("There was a service error: " + e.getDetails().getCode() + " : " + e.getDetails().getMessage());
+        } catch (UserRecoverableAuthIOException e) {
+            startActivityForResult(e.getIntent(), REQUEST_AUTHORIZATION);
+        }catch (Throwable t) {
+            Log.d("TTTT",t.getCause().getMessage());
+            t.printStackTrace();
+        }
+
+
+        return retStr;
+
     }
 }

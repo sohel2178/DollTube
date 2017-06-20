@@ -1,5 +1,6 @@
 package com.baudiabatash.dolltube;
 
+import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
 import android.net.ConnectivityManager;
@@ -13,14 +14,21 @@ import com.google.android.gms.common.GoogleApiAvailability;
  */
 
 public class DollUtil {
+    private Activity activity;
+
+    public DollUtil(Activity activity) {
+        this.activity = activity;
+    }
 
     /**
      * Checks whether the device currently has a network connection.
      * @return true if the device has a network connection, false otherwise.
      */
-    public static boolean isDeviceOnline(Context context) {
+
+
+    public boolean isDeviceOnline() {
         ConnectivityManager connMgr =
-                (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+                (ConnectivityManager) activity.getSystemService(Context.CONNECTIVITY_SERVICE);
         NetworkInfo networkInfo = connMgr.getActiveNetworkInfo();
         return (networkInfo != null && networkInfo.isConnected());
     }
@@ -30,27 +38,23 @@ public class DollUtil {
      * @return true if Google Play Services is available and up to
      *     date on this device; false otherwise.
      */
-    public static boolean isGooglePlayServicesAvailable(Context context) {
+    public boolean isGooglePlayServicesAvailable() {
         GoogleApiAvailability apiAvailability =
                 GoogleApiAvailability.getInstance();
         final int connectionStatusCode =
-                apiAvailability.isGooglePlayServicesAvailable(context);
+                apiAvailability.isGooglePlayServicesAvailable(activity);
         return connectionStatusCode == ConnectionResult.SUCCESS;
     }
 
-    /**
-     * Attempt to resolve a missing, out-of-date, invalid or disabled Google
-     * Play Services installation via a user dialog, if possible.
-     */
-    /*private void acquireGooglePlayServices(Context context) {
+    public void acquireGooglePlayServices(int requestCode) {
         GoogleApiAvailability apiAvailability =
                 GoogleApiAvailability.getInstance();
         final int connectionStatusCode =
-                apiAvailability.isGooglePlayServicesAvailable(context);
+                apiAvailability.isGooglePlayServicesAvailable(activity);
         if (apiAvailability.isUserResolvableError(connectionStatusCode)) {
-            showGooglePlayServicesAvailabilityErrorDialog(connectionStatusCode);
+            showGooglePlayServicesAvailabilityErrorDialog(connectionStatusCode,requestCode);
         }
-    }*/
+    }
 
     /**
      * Display an error dialog showing that Google Play Services is missing
@@ -58,13 +62,13 @@ public class DollUtil {
      * @param connectionStatusCode code describing the presence (or lack of)
      *     Google Play Services on this device.
      */
-    /*private void showGooglePlayServicesAvailabilityErrorDialog(
-            final int connectionStatusCode) {
+    private void showGooglePlayServicesAvailabilityErrorDialog(
+            final int connectionStatusCode,int requestCode) {
         GoogleApiAvailability apiAvailability = GoogleApiAvailability.getInstance();
         Dialog dialog = apiAvailability.getErrorDialog(
-                MainActivity.this,
+                activity,
                 connectionStatusCode,
-                REQUEST_GOOGLE_PLAY_SERVICES);
+                requestCode);
         dialog.show();
-    }*/
+    }
 }
